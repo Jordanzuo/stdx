@@ -1,6 +1,6 @@
 # stdx
 
-Generic building blocks that Go's standard library does not provide yet: optional values, result types, tuples, typed mutexes, and custom base conversion.
+Generic building blocks that Go's standard library does not provide yet: optional values, result types, tuples, typed mutexes, custom base conversion, and unsigned integer intervals.
 
 Licensed under Apache-2.0. You may use this in proprietary projects without open-sourcing your code.
 
@@ -23,6 +23,7 @@ go get github.com/Jordanzuo/stdx
 | `tuple` | `github.com/Jordanzuo/stdx/tuple` | Heterogeneous tuples (`Tuple2` … `Tuple16`) |
 | `mutex` | `github.com/Jordanzuo/stdx/mutex` | Typed mutex wrappers (`Mutex[T]`, `RWMutex[T]`) |
 | `base` | `github.com/Jordanzuo/stdx/base` | Convert `uint64` values to and from custom base strings |
+| `math` | `github.com/Jordanzuo/stdx/math` | Discrete intervals over unsigned integers with inclusive/exclusive bounds |
 
 ## Examples
 
@@ -84,6 +85,26 @@ pair := tuple.NewTuple2(int64(1), "Jordan")
 id, name := pair.Values()
 ```
 
+### Mutex
+
+```go
+import "github.com/Jordanzuo/stdx/mutex"
+
+m := mutex.NewMutex(&Config{})
+m.WriteData(func(cfg *Config) {
+    cfg.Enabled = true
+})
+```
+
+`WriteData` and `ReadData` pass a copy of `T` to the callback. In-place mutation works when `T` is a pointer, map, or other reference type. For value types, use `Lock`, `SetDataAfterLock`, and `Unlock`:
+
+```go
+v := this.Lock()
+defer this.Unlock()
+v.Count++
+this.SetDataAfterLock(v)
+```
+
 ### Base
 
 ```go
@@ -115,25 +136,48 @@ Parsing is **case-sensitive**. `NewBase16(false)` accepts `"ff"` but not `"FF"`;
 
 For custom alphabets from `New`, visually similar Unicode characters (such as Latin and Cyrillic letters) are distinct digits. Invalid UTF-8 bytes are read as U+FFFD (`�`). Create `Base` values only through `New` or the `NewBase*` helpers; a nil `*Base` panics when used.
 
-### Mutex
+### Math
 
 ```go
-import "github.com/Jordanzuo/stdx/mutex"
+import (
+    "strconv"
 
-m := mutex.NewMutex(&Config{})
-m.WriteData(func(cfg *Config) {
-    cfg.Enabled = true
-})
+    "github.com/Jordanzuo/stdx/math"
+    "github.com/Jordanzuo/stdx/result"
+)
+
+r := math.BuildInterval(uint(1), uint(5), math.InclusiveInclusive)
+if r.HasError() {
+    // handle error
+}
+interval := r.Data()
+
+interval.Contains(3)              // true
+interval.Length()                 // 5
+interval.String()                 // "[1,5]"
+interval.DistanceFromBeginning(3) // 2
+
+parseBound := func(s string) result.Result[uint] {
+    v, err := strconv.ParseUint(s, 10, 64)
+    if err != nil {
+        return result.NewErrorResult[uint](err)
+    }
+    return result.NewDataResult(uint(v))
+}
+
+parsed := math.BuildIntervalFromString("[2,6)", parseBound)
+if parsed.HasData() {
+    _ = parsed.Data()
+}
 ```
 
-`WriteData` and `ReadData` pass a copy of `T` to the callback. In-place mutation works when `T` is a pointer, map, or other reference type. For value types, use `Lock`, `SetDataAfterLock`, and `Unlock`:
+`BuildInterval` and `BuildIntervalFromString` return `result.Result`. Check `HasError` before calling `Data`.
 
-```go
-v := this.Lock()
-defer this.Unlock()
-v.Count++
-this.SetDataAfterLock(v)
-```
+Intervals support four endpoint combinations: `[a,b]`, `[a,b)`, `(a,b]`, and `(a,b)`. `String` and `BuildIntervalFromString` use comma-separated bounds (for example `"[1,5]"`).
+
+`BuildInterval` rejects intervals when the lower bound exceeds the upper bound, when equal bounds would form an empty interval with any exclusive endpoint, when `[0,max]` inclusive would overflow `Length`, or when the interval type is undefined. `BuildIntervalFromString` validates bracket syntax, converts each bound with `convertFunc`, and delegates the rest to `BuildInterval`.
+
+`DistanceFromBeginning` returns `value - lower` when the value is in the interval, or `0` otherwise. Create intervals with `BuildInterval` or `BuildIntervalFromString` rather than constructing `Interval` values directly.
 
 ## Development
 
