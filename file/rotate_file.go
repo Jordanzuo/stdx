@@ -1,13 +1,13 @@
 // Package file provides utilities for writing data to disk with file rotation.
 //
 // RotateFile writes to a single active file until a rotation condition is met:
-// maximum file size, elapsed time interval, or a change in the data key supplied
-// with each write. When rotation happens, the current file is synced, closed, and
-// renamed with a timestamp suffix; a new active file is then opened.
+// maximum file size, elapsed time interval, or calendar date change. When rotation
+// happens, the current file is synced, closed, and renamed with a timestamp
+// suffix; a new active file is then opened.
 //
 // Create RotateFile values with NewRotateFile. A zero MaxFileSize or
-// TimeIntervalSec disables that rotation trigger. Pass an empty data key to
-// disable data-key rotation.
+// TimeIntervalSec disables that rotation trigger. Date-change rotation is always
+// enabled.
 package file
 
 import (
@@ -21,11 +21,12 @@ import (
 	. "github.com/Jordanzuo/stdx/result"
 )
 
+const rotateDateLayout = "20060102"
 const rotateTimeLayout = "20060102_150405"
 const rotateCheckInterval = 5 * time.Second
 
 // RotateFile writes data to disk and rotates the active file when size, time, or
-// data-key limits are reached.
+// date limits are reached.
 type RotateFile struct {
 	directoryName   string
 	fileName        string
@@ -34,8 +35,7 @@ type RotateFile struct {
 	maxTimeSec      int64
 	currFileSize    int64
 	maxFileSize     int64
-	currDataKey     string
-	hasDataKey      bool
+	currDate        string
 	file                 *os.File
 	mutex                sync.Mutex
 	closingChannel       chan bool
@@ -86,24 +86,20 @@ func NewRotateFile(directoryName, fileName, fileSuffix string, maxFileSize, time
 		return NewErrorResult[ResultDataType](err)
 	}
 
-	if timeIntervalSec > 0 {
-		rotateFile.periodicCheckStarted = true
-		go rotateFile.runPeriodicCheck()
-	}
+	rotateFile.periodicCheckStarted = true
+	go rotateFile.runPeriodicCheck()
 
 	return NewDataResult(rotateFile)
 }
 
-// WriteString appends message to the active file using dataKey for data-change rotation.
-// When dataKey is empty, rotation happens only for size or time limits.
-func (this *RotateFile) WriteString(dataKey, message string) error {
-	return this.write(dataKey, []byte(message))
+// WriteString appends message to the active file.
+func (this *RotateFile) WriteString(message string) error {
+	return this.write([]byte(message))
 }
 
-// WriteBytes appends data to the active file using dataKey for data-change rotation.
-// When dataKey is empty, rotation happens only for size or time limits.
-func (this *RotateFile) WriteBytes(dataKey string, data []byte) error {
-	return this.write(dataKey, data)
+// WriteBytes appends data to the active file.
+func (this *RotateFile) WriteBytes(data []byte) error {
+	return this.write(data)
 }
 
 // RotatedFilePaths returns paths of rotated files for this RotateFile, excluding the active file.
@@ -140,7 +136,7 @@ func (this *RotateFile) Close() error {
 	return err
 }
 
-func (this *RotateFile) write(dataKey string, data []byte) error {
+func (this *RotateFile) write(data []byte) error {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
@@ -148,7 +144,7 @@ func (this *RotateFile) write(dataKey string, data []byte) error {
 		return fmt.Errorf("file: rotate file is closed")
 	}
 
-	if err := this.rotateIfNeeded(dataKey, int64(len(data)), false); err != nil {
+	if err := this.rotateIfNeeded(int64(len(data)), false); err != nil {
 		return err
 	}
 
@@ -158,22 +154,18 @@ func (this *RotateFile) write(dataKey string, data []byte) error {
 	}
 
 	this.currFileSize += int64(n)
-	return this.rotateIfNeeded(dataKey, 0, true)
+	return this.rotateIfNeeded(0, true)
 }
 
-func (this *RotateFile) rotateIfNeeded(dataKey string, pendingSize int64, afterWrite bool) error {
-	if !this.shouldRotate(dataKey, pendingSize, afterWrite) {
-		if dataKey != "" {
-			this.currDataKey = dataKey
-			this.hasDataKey = true
-		}
+func (this *RotateFile) rotateIfNeeded(pendingSize int64, afterWrite bool) error {
+	if !this.shouldRotate(pendingSize, afterWrite) {
 		return nil
 	}
 
-	return this.rotate(dataKey)
+	return this.rotate()
 }
 
-func (this *RotateFile) shouldRotate(dataKey string, pendingSize int64, afterWrite bool) bool {
+func (this *RotateFile) shouldRotate(pendingSize int64, afterWrite bool) bool {
 	if this.maxFileSize > 0 {
 		size := this.currFileSize
 		if !afterWrite {
@@ -188,14 +180,14 @@ func (this *RotateFile) shouldRotate(dataKey string, pendingSize int64, afterWri
 		return true
 	}
 
-	if dataKey != "" && this.hasDataKey && dataKey != this.currDataKey && this.currFileSize > 0 {
+	if this.currDate != "" && this.currentDate() != this.currDate && this.currFileSize > 0 {
 		return true
 	}
 
 	return false
 }
 
-func (this *RotateFile) rotate(nextDataKey string) error {
+func (this *RotateFile) rotate() error {
 	if this.file == nil {
 		return nil
 	}
@@ -219,23 +211,13 @@ func (this *RotateFile) rotate(nextDataKey string) error {
 		return fmt.Errorf("file: remove empty active file %s failed: %w", this.activeFilePath(), err)
 	}
 
-	if err := this.initFile(); err != nil {
-		return err
-	}
-
-	if nextDataKey != "" {
-		this.currDataKey = nextDataKey
-		this.hasDataKey = true
-	} else {
-		this.currDataKey = ""
-		this.hasDataKey = false
-	}
-
-	return nil
+	return this.initFile()
 }
 
 func (this *RotateFile) initFile() error {
-	this.maxTimeSec = time.Now().Unix() + this.timeIntervalSec
+	now := time.Now()
+	this.maxTimeSec = now.Unix() + this.timeIntervalSec
+	this.currDate = now.Format(rotateDateLayout)
 	this.currFileSize = 0
 
 	file, err := os.OpenFile(this.activeFilePath(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
@@ -262,7 +244,7 @@ func (this *RotateFile) runPeriodicCheck() {
 		select {
 		case <-tick.C:
 			this.mutex.Lock()
-			err := this.rotateIfNeeded(this.currDataKey, 0, true)
+			err := this.rotateIfNeeded(0, true)
 			this.mutex.Unlock()
 			if err != nil {
 				return
@@ -280,6 +262,10 @@ func (this *RotateFile) filePrefix() string {
 
 func (this *RotateFile) activeFilePath() string {
 	return filepath.Join(this.directoryName, fmt.Sprintf("%s.%s", this.fileName, this.fileSuffix))
+}
+
+func (this *RotateFile) currentDate() string {
+	return time.Now().Format(rotateDateLayout)
 }
 
 func (this *RotateFile) rotatedFilePath(at time.Time) string {

@@ -44,7 +44,7 @@ func TestRotateFile_rotateOnSize(t *testing.T) {
 	rotateFile := result.Data()
 	defer rotateFile.Close()
 
-	if err := rotateFile.WriteString("", "12345"); err != nil {
+	if err := rotateFile.WriteString("12345"); err != nil {
 		t.Fatalf("WriteString failed: %v", err)
 	}
 
@@ -67,7 +67,7 @@ func TestRotateFile_rotateOnSize(t *testing.T) {
 		t.Fatalf("unexpected rotated content: %q", content)
 	}
 
-	if err := rotateFile.WriteString("", "next"); err != nil {
+	if err := rotateFile.WriteString("next"); err != nil {
 		t.Fatalf("second WriteString failed: %v", err)
 	}
 
@@ -80,9 +80,9 @@ func TestRotateFile_rotateOnSize(t *testing.T) {
 	}
 }
 
-func TestRotateFile_rotateOnDataKey(t *testing.T) {
+func TestRotateFile_rotateOnDateChange(t *testing.T) {
 	dir := t.TempDir()
-	result := NewRotateFile(dir, "key", "txt", 0, 0)
+	result := NewRotateFile(dir, "date", "txt", 0, 0)
 	if result.HasError() {
 		t.Fatalf("NewRotateFile failed: %v", result.Error())
 	}
@@ -90,10 +90,13 @@ func TestRotateFile_rotateOnDataKey(t *testing.T) {
 	rotateFile := result.Data()
 	defer rotateFile.Close()
 
-	if err := rotateFile.WriteString("alpha", "first"); err != nil {
+	if err := rotateFile.WriteString("first"); err != nil {
 		t.Fatalf("first WriteString failed: %v", err)
 	}
-	if err := rotateFile.WriteString("beta", "second"); err != nil {
+
+	rotateFile.currDate = time.Now().AddDate(0, 0, -1).Format(rotateDateLayout)
+
+	if err := rotateFile.WriteString("second"); err != nil {
 		t.Fatalf("second WriteString failed: %v", err)
 	}
 
@@ -113,7 +116,7 @@ func TestRotateFile_rotateOnDataKey(t *testing.T) {
 		t.Fatalf("unexpected rotated content: %q", rotatedContent)
 	}
 
-	activeContent, err := os.ReadFile(filepath.Join(dir, "key.txt"))
+	activeContent, err := os.ReadFile(filepath.Join(dir, "date.txt"))
 	if err != nil {
 		t.Fatalf("read active file failed: %v", err)
 	}
@@ -132,13 +135,13 @@ func TestRotateFile_rotateOnTime(t *testing.T) {
 	rotateFile := result.Data()
 	defer rotateFile.Close()
 
-	if err := rotateFile.WriteString("", "timed"); err != nil {
+	if err := rotateFile.WriteString("timed"); err != nil {
 		t.Fatalf("WriteString failed: %v", err)
 	}
 
 	time.Sleep(1100 * time.Millisecond)
 
-	if err := rotateFile.WriteString("", "after"); err != nil {
+	if err := rotateFile.WriteString("after"); err != nil {
 		t.Fatalf("second WriteString failed: %v", err)
 	}
 
@@ -171,7 +174,7 @@ func TestRotateFile_writeAfterClose(t *testing.T) {
 		t.Fatalf("Close failed: %v", err)
 	}
 
-	if err := rotateFile.WriteString("", "data"); err == nil {
+	if err := rotateFile.WriteString("data"); err == nil {
 		t.Fatalf("expected error after close")
 	}
 }
