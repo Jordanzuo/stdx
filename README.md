@@ -1,6 +1,6 @@
 # stdx
 
-Generic building blocks that Go's standard library does not provide yet: optional values, result types, tuples, typed mutexes, custom base conversion, and unsigned integer intervals.
+Generic building blocks that Go's standard library does not provide yet: optional values, result types, tuples, typed mutexes, custom base conversion, unsigned integer intervals, and rotating file writers.
 
 Licensed under Apache-2.0. You may use this in proprietary projects without open-sourcing your code.
 
@@ -24,6 +24,7 @@ go get github.com/Jordanzuo/stdx
 | `mutex` | `github.com/Jordanzuo/stdx/mutex` | Typed mutex wrappers (`Mutex[T]`, `RWMutex[T]`) |
 | `base` | `github.com/Jordanzuo/stdx/base` | Convert `uint64` values to and from custom base strings |
 | `math` | `github.com/Jordanzuo/stdx/math` | Discrete intervals over unsigned integers with inclusive/exclusive bounds |
+| `file` | `github.com/Jordanzuo/stdx/file` | Rotating file writer (`RotateFile`) by size, time interval, or date change |
 
 ## Examples
 
@@ -178,6 +179,31 @@ Intervals support four endpoint combinations: `[a,b]`, `[a,b)`, `(a,b]`, and `(a
 `BuildInterval` rejects intervals when the lower bound exceeds the upper bound, when equal bounds would form an empty interval with any exclusive endpoint, when `[0,max]` inclusive would overflow `Length`, or when the interval type is undefined. `BuildIntervalFromString` validates bracket syntax, converts each bound with `convertFunc`, and delegates the rest to `BuildInterval`.
 
 `DistanceFromBeginning` returns `value - lower` when the value is in the interval, or `0` otherwise. Create intervals with `BuildInterval` or `BuildIntervalFromString` rather than constructing `Interval` values directly.
+
+### File
+
+```go
+import "github.com/Jordanzuo/stdx/file"
+
+r := file.NewRotateFile("/var/log/app", "app", "log", 10*1024*1024, 3600)
+if r.HasError() {
+    // handle error
+}
+rotateFile := r.Data()
+defer rotateFile.Close()
+
+_ = rotateFile.WriteString("hello\n")
+```
+
+`RotateFile` appends to a single active file (`fileName.fileSuffix`) and rotates when any of these conditions is met:
+
+- **Size**: current file size reaches `maxFileSize` (bytes)
+- **Time**: `timeIntervalSec` elapses since the active file was opened
+- **Date change**: the calendar date changes (for example, at midnight)
+
+On rotation, the active file is synced, closed, and renamed with a timestamp suffix (`filename_YYYYMMDD_HHMMSS.suffix`). A new active file is then opened. Set `maxFileSize` or `timeIntervalSec` to `0` to disable that trigger; date-change rotation is always enabled.
+
+Create `RotateFile` values with `NewRotateFile`. Check `HasError` before calling `Data`. Call `Close` when finished; later writes return an error.
 
 ## Development
 

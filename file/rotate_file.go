@@ -1,0 +1,330 @@
+// Package file provides utilities for writing data to disk with file rotation.
+//
+// RotateFile writes to a single active file until a rotation condition is met:
+// maximum file size, elapsed time interval, or calendar date change. When rotation
+// happens, the current file is synced, closed, and renamed with a timestamp
+// suffix; a new active file is then opened.
+//
+// Create RotateFile values with NewRotateFile. A zero MaxFileSize or
+// TimeIntervalSec disables that rotation trigger. Date-change rotation is always
+// enabled.
+package file
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	. "github.com/Jordanzuo/stdx/result"
+)
+
+const rotateDateLayout = "20060102"
+const rotateTimeLayout = "20060102_150405"
+const rotateCheckInterval = 5 * time.Second
+
+// RotateFile writes data to disk and rotates the active file when size, time, or
+// date limits are reached.
+type RotateFile struct {
+	directoryName        string
+	fileName             string
+	fileSuffix           string
+	timeIntervalSec      int64
+	maxTimeSec           int64
+	currFileSize         int64
+	maxFileSize          int64
+	currDate             string
+	file                 *os.File
+	mutex                sync.Mutex
+	closingChannel       chan bool
+	closedChannel        chan bool
+	periodicCheckStarted bool
+}
+
+// NewRotateFile opens or creates the active file in directoryName.
+//
+// fileName and fileSuffix form the active file name as fileName.fileSuffix.
+// maxFileSize is the size in bytes that triggers rotation; 0 disables size rotation.
+// timeIntervalSec is the seconds after which rotation is triggered; 0 disables time rotation.
+func NewRotateFile(directoryName, fileName, fileSuffix string, maxFileSize, timeIntervalSec int64) Result[*RotateFile] {
+	type ResultDataType = *RotateFile
+
+	if directoryName == "" {
+		return NewErrorResult[ResultDataType](fmt.Errorf("file: empty directory name"))
+	}
+	if fileName == "" {
+		return NewErrorResult[ResultDataType](fmt.Errorf("file: empty file name"))
+	}
+	if fileSuffix == "" {
+		return NewErrorResult[ResultDataType](fmt.Errorf("file: empty file suffix"))
+	}
+	if maxFileSize < 0 {
+		return NewErrorResult[ResultDataType](fmt.Errorf("file: negative max file size"))
+	}
+	if timeIntervalSec < 0 {
+		return NewErrorResult[ResultDataType](fmt.Errorf("file: negative time interval"))
+	}
+
+	if err := os.MkdirAll(directoryName, 0o755); err != nil {
+		return NewErrorResult[ResultDataType](fmt.Errorf("file: create directory %q: %w", directoryName, err))
+	}
+
+	rotateFile := &RotateFile{
+		directoryName:   directoryName,
+		fileName:        fileName,
+		fileSuffix:      fileSuffix,
+		timeIntervalSec: timeIntervalSec,
+		maxFileSize:     maxFileSize,
+		closingChannel:  make(chan bool, 1),
+		closedChannel:   make(chan bool, 1),
+	}
+
+	if err := rotateFile.initFile(); err != nil {
+		rotateFile.closeFile()
+		return NewErrorResult[ResultDataType](err)
+	}
+
+	rotateFile.periodicCheckStarted = true
+	go rotateFile.runPeriodicCheck()
+
+	return NewDataResult(rotateFile)
+}
+
+// WriteString appends message to the active file.
+func (this *RotateFile) WriteString(message string) error {
+	return this.write([]byte(message))
+}
+
+// WriteBytes appends data to the active file.
+func (this *RotateFile) WriteBytes(data []byte) error {
+	return this.write(data)
+}
+
+// RotatedFilePaths returns paths of rotated files for this RotateFile, excluding the active file.
+func (this *RotateFile) RotatedFilePaths() ([]string, error) {
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+
+	return listRotatedFiles(this.directoryName, this.filePrefix(), this.fileSuffix)
+}
+
+// Close syncs and closes the active file and stops periodic rotation checks.
+// Calling Close more than once is safe; later calls are no-ops.
+func (this *RotateFile) Close() error {
+	this.mutex.Lock()
+
+	var err error
+	if this.file != nil {
+		err = this.file.Sync()
+		closeErr := this.file.Close()
+		if err == nil {
+			err = closeErr
+		}
+		this.file = nil
+	}
+
+	shouldStop := this.periodicCheckStarted
+	if shouldStop {
+		this.periodicCheckStarted = false
+	}
+	closing := this.closingChannel
+	closed := this.closedChannel
+
+	// Release the mutex before waiting for the periodic checker so it can finish
+	// any in-flight tick that already selected and is blocked on Lock. Keep the
+	// channels non-nil so the checker can still select on them after unlock.
+	this.mutex.Unlock()
+
+	if shouldStop {
+		closing <- true
+		<-closed
+	}
+
+	return err
+}
+
+func (this *RotateFile) write(data []byte) error {
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+
+	if this.file == nil {
+		return fmt.Errorf("file: rotate file is closed")
+	}
+
+	if err := this.rotateIfNeeded(int64(len(data)), false); err != nil {
+		return err
+	}
+
+	n, err := this.file.Write(data)
+	if err != nil {
+		return fmt.Errorf("file: write to %s failed: %w", this.activeFilePath(), err)
+	}
+
+	this.currFileSize += int64(n)
+	return this.rotateIfNeeded(0, true)
+}
+
+func (this *RotateFile) rotateIfNeeded(pendingSize int64, afterWrite bool) error {
+	if !this.shouldRotate(pendingSize, afterWrite) {
+		return nil
+	}
+
+	return this.rotate()
+}
+
+func (this *RotateFile) shouldRotate(pendingSize int64, afterWrite bool) bool {
+	if this.maxFileSize > 0 {
+		size := this.currFileSize
+		if !afterWrite {
+			size += pendingSize
+		}
+		if size >= this.maxFileSize {
+			return true
+		}
+	}
+
+	if this.timeIntervalSec > 0 && time.Now().Unix() >= this.maxTimeSec {
+		return true
+	}
+
+	if this.currDate != "" && this.currentDate() != this.currDate && this.currFileSize > 0 {
+		return true
+	}
+
+	return false
+}
+
+func (this *RotateFile) rotate() error {
+	if this.file == nil {
+		return nil
+	}
+
+	if err := this.file.Sync(); err != nil {
+		return fmt.Errorf("file: sync %s failed: %w", this.activeFilePath(), err)
+	}
+
+	if err := this.file.Close(); err != nil {
+		return fmt.Errorf("file: close %s failed: %w", this.activeFilePath(), err)
+	}
+	this.file = nil
+
+	if this.currFileSize > 0 {
+		oldPath := this.activeFilePath()
+		newPath := this.rotatedFilePath(time.Now())
+		if err := os.Rename(oldPath, newPath); err != nil {
+			return fmt.Errorf("file: rename %s to %s failed: %w", oldPath, newPath, err)
+		}
+	} else if err := os.Remove(this.activeFilePath()); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("file: remove empty active file %s failed: %w", this.activeFilePath(), err)
+	}
+
+	return this.initFile()
+}
+
+func (this *RotateFile) initFile() error {
+	now := time.Now()
+	this.maxTimeSec = now.Unix() + this.timeIntervalSec
+	this.currDate = now.Format(rotateDateLayout)
+	this.currFileSize = 0
+
+	file, err := os.OpenFile(this.activeFilePath(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("file: open %s failed: %w", this.activeFilePath(), err)
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return fmt.Errorf("file: stat %s failed: %w", this.activeFilePath(), err)
+	}
+
+	this.file = file
+	this.currFileSize = info.Size()
+	return nil
+}
+
+func (this *RotateFile) closeFile() {
+	if this.file != nil {
+		this.file.Close()
+		this.file = nil
+	}
+}
+
+func (this *RotateFile) runPeriodicCheck() {
+	tick := time.NewTicker(rotateCheckInterval)
+	defer tick.Stop()
+
+	for {
+		select {
+		case <-tick.C:
+			this.mutex.Lock()
+			stopped := !this.periodicCheckStarted
+			var err error
+			if !stopped {
+				err = this.rotateIfNeeded(0, true)
+			}
+			this.mutex.Unlock()
+			if stopped {
+				// Close already marked us stopped and will signal closingChannel;
+				// drain it and acknowledge so Close does not hang.
+				<-this.closingChannel
+				this.closedChannel <- true
+				return
+			}
+			if err != nil {
+				return
+			}
+		case <-this.closingChannel:
+			this.closedChannel <- true
+			return
+		}
+	}
+}
+
+func (this *RotateFile) filePrefix() string {
+	return this.fileName + "_"
+}
+
+func (this *RotateFile) activeFilePath() string {
+	return filepath.Join(this.directoryName, fmt.Sprintf("%s.%s", this.fileName, this.fileSuffix))
+}
+
+func (this *RotateFile) currentDate() string {
+	return time.Now().Format(rotateDateLayout)
+}
+
+func (this *RotateFile) rotatedFilePath(at time.Time) string {
+	return filepath.Join(
+		this.directoryName,
+		fmt.Sprintf("%s_%s.%s", this.fileName, at.Format(rotateTimeLayout), this.fileSuffix),
+	)
+}
+
+func listRotatedFiles(directoryName, prefix, suffix string) ([]string, error) {
+	entries, err := os.ReadDir(directoryName)
+	if err != nil {
+		return nil, err
+	}
+
+	suffixWithDot := "." + suffix
+	fileList := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		baseName := entry.Name()
+		if prefix != "" && !strings.HasPrefix(baseName, prefix) {
+			continue
+		}
+		if suffix != "" && !strings.HasSuffix(baseName, suffixWithDot) {
+			continue
+		}
+
+		fileList = append(fileList, filepath.Join(directoryName, baseName))
+	}
+
+	return fileList, nil
+}
