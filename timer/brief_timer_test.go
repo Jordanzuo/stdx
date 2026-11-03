@@ -136,7 +136,7 @@ func TestBriefTimerOrderByEndTime(t *testing.T) {
 func TestBriefTimerGetPeriod(t *testing.T) {
 	timer := NewBriefTimer(1, 0, 90000)
 	got := timer.getPeriod()
-	want := NewPeriod(90000, periodIntervalMs)
+	want := newPeriod(90000, periodIntervalMs)
 	if got != want {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}

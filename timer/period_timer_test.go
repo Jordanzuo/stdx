@@ -3,7 +3,7 @@ package timer
 import "testing"
 
 func testPeriod() Period {
-	return NewPeriod(1000, periodIntervalMs)
+	return newPeriod(1000, periodIntervalMs)
 }
 
 func TestNewPeriodTimer(t *testing.T) {
@@ -23,13 +23,13 @@ func TestNewPeriodTimer(t *testing.T) {
 
 func TestPeriodTimerGetTimerCount(t *testing.T) {
 	periodTimer := newPeriodTimer(testPeriod())
-	if got := periodTimer.GetTimerCount(); got != 0 {
+	if got := periodTimer.getTimerCount(); got != 0 {
 		t.Fatalf("GetTimerCount() = %d, want 0", got)
 	}
 
 	periodTimer.addTimer(newTimer(1, "type1", 1000, 2000, 0, 0, 0, ""))
 	periodTimer.addTimer(newTimer(2, "type2", 1000, 3000, 0, 0, 0, ""))
-	if got := periodTimer.GetTimerCount(); got != 2 {
+	if got := periodTimer.getTimerCount(); got != 2 {
 		t.Fatalf("GetTimerCount() = %d, want 2", got)
 	}
 }
@@ -39,14 +39,14 @@ func TestPeriodTimerGetTimerList(t *testing.T) {
 	periodTimer.addTimer(newTimer(1, "type1", 1000, 2000, 0, 0, 0, ""))
 	periodTimer.addTimer(newTimer(2, "type2", 1000, 3000, 0, 0, 0, ""))
 
-	if got := len(periodTimer.GetTimerList()); got != 2 {
+	if got := len(periodTimer.getTimerList()); got != 2 {
 		t.Fatalf("GetTimerList() length = %d, want 2", got)
 	}
 }
 
 func TestPeriodTimerGetTimerListEmpty(t *testing.T) {
 	periodTimer := newPeriodTimer(testPeriod())
-	if got := len(periodTimer.GetTimerList()); got != 0 {
+	if got := len(periodTimer.getTimerList()); got != 0 {
 		t.Fatalf("GetTimerList() length = %d, want 0", got)
 	}
 }
@@ -57,13 +57,13 @@ func TestPeriodTimerGetTimerListByType(t *testing.T) {
 	periodTimer.addTimer(newTimer(2, "type1", 1000, 3000, 0, 0, 0, ""))
 	periodTimer.addTimer(newTimer(3, "type2", 1000, 4000, 0, 0, 0, ""))
 
-	if got := len(periodTimer.GetTimerListByType("type1")); got != 2 {
+	if got := len(periodTimer.getTimerListByType("type1")); got != 2 {
 		t.Fatalf("type1 length = %d, want 2", got)
 	}
-	if got := len(periodTimer.GetTimerListByType("type2")); got != 1 {
+	if got := len(periodTimer.getTimerListByType("type2")); got != 1 {
 		t.Fatalf("type2 length = %d, want 1", got)
 	}
-	if got := len(periodTimer.GetTimerListByType("nonexistent")); got != 0 {
+	if got := len(periodTimer.getTimerListByType("nonexistent")); got != 0 {
 		t.Fatalf("nonexistent length = %d, want 0", got)
 	}
 }
@@ -73,7 +73,7 @@ func TestPeriodTimerGetBriefTimerList(t *testing.T) {
 	periodTimer.addTimer(newTimer(1, "type1", 1000, 2000, 0, 0, 0, ""))
 	periodTimer.addTimer(newTimer(2, "type2", 1000, 3000, 0, 0, 0, ""))
 
-	list := periodTimer.GetBriefTimerList()
+	list := periodTimer.getBriefTimerList()
 	if len(list) != 2 {
 		t.Fatalf("GetBriefTimerList() length = %d, want 2", len(list))
 	}
@@ -86,7 +86,7 @@ func TestPeriodTimerGetTimer(t *testing.T) {
 	periodTimer := newPeriodTimer(testPeriod())
 	periodTimer.addTimer(newTimer(1, "type1", 1000, 2000, 0, 0, 0, ""))
 
-	timerOption := periodTimer.GetTimer(1)
+	timerOption := periodTimer.getTimer(1)
 	if timerOption.HasNone() {
 		t.Fatal("GetTimer(1) should return a timer")
 	}
@@ -94,7 +94,7 @@ func TestPeriodTimerGetTimer(t *testing.T) {
 		t.Fatalf("timer id = %d, want 1", timerOption.Data().Id)
 	}
 
-	if periodTimer.GetTimer(999).HasData() {
+	if periodTimer.getTimer(999).HasData() {
 		t.Fatal("GetTimer(999) should be empty")
 	}
 }

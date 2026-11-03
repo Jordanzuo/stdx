@@ -7,33 +7,34 @@ import (
 	. "github.com/Jordanzuo/stdx/option"
 )
 
-// CompleteTimer stores timers grouped by the Period that contains each timer's end time.
-type CompleteTimer struct {
+// completeTimer stores timers grouped by the Period that contains each timer's end time.
+// It is package-private; callers use CreateTimer/CancelTimer/HandleTimer and GetTimer*.
+type completeTimer struct {
 	// periodTimerMap stores timers by period.
-	periodTimerMap map[Period]*PeriodTimer
+	periodTimerMap map[Period]*periodTimer
 	mutex          sync.RWMutex
 }
 
-// NewCompleteTimer returns an empty CompleteTimer.
-func NewCompleteTimer() *CompleteTimer {
-	return &CompleteTimer{
-		periodTimerMap: make(map[Period]*PeriodTimer),
+// newCompleteTimer returns an empty completeTimer.
+func newCompleteTimer() *completeTimer {
+	return &completeTimer{
+		periodTimerMap: make(map[Period]*periodTimer),
 	}
 }
 
-// GetPeriodTimerCount returns how many periods this collection holds.
-func (this *CompleteTimer) GetPeriodTimerCount() int {
+// getPeriodTimerCount returns how many periods this collection holds.
+func (this *completeTimer) getPeriodTimerCount() int {
 	this.mutex.RLock()
 	defer this.mutex.RUnlock()
 	return len(this.periodTimerMap)
 }
 
-// GetPeriodTimerList returns every period collection.
+// getPeriodTimerList returns every period collection.
 // The order is not guaranteed.
-func (this *CompleteTimer) GetPeriodTimerList() []*PeriodTimer {
+func (this *completeTimer) getPeriodTimerList() []*periodTimer {
 	this.mutex.RLock()
 	defer this.mutex.RUnlock()
-	list := make([]*PeriodTimer, len(this.periodTimerMap))
+	list := make([]*periodTimer, len(this.periodTimerMap))
 	var index int
 	for _, item := range this.periodTimerMap {
 		list[index] = item
@@ -42,62 +43,62 @@ func (this *CompleteTimer) GetPeriodTimerList() []*PeriodTimer {
 	return list
 }
 
-// GetPeriodTimer returns the PeriodTimer for period, or an empty Option when it is absent.
-func (this *CompleteTimer) GetPeriodTimer(period Period) Option[*PeriodTimer] {
+// getPeriodTimer returns the periodTimer for period, or an empty Option when it is absent.
+func (this *completeTimer) getPeriodTimer(period Period) Option[*periodTimer] {
 	this.mutex.RLock()
 	defer this.mutex.RUnlock()
 	periodTimerPtr, exists := this.periodTimerMap[period]
 	if !exists {
-		return NewNoneOption[*PeriodTimer]()
+		return NewNoneOption[*periodTimer]()
 	}
 	return NewDataOption(periodTimerPtr)
 }
 
-// deletePeriodTimer removes the PeriodTimer for period.
-func (this *CompleteTimer) deletePeriodTimer(period Period) {
+// deletePeriodTimer removes the periodTimer for period.
+func (this *completeTimer) deletePeriodTimer(period Period) {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 	delete(this.periodTimerMap, period)
 }
 
-// GetTimerCount returns how many timers this collection holds across every period.
-func (this *CompleteTimer) GetTimerCount() int {
+// getTimerCount returns how many timers this collection holds across every period.
+func (this *completeTimer) getTimerCount() int {
 	this.mutex.RLock()
 	defer this.mutex.RUnlock()
 	var count int
 	for _, item := range this.periodTimerMap {
-		count += item.GetTimerCount()
+		count += item.getTimerCount()
 	}
 	return count
 }
 
-// GetTimerList returns every timer in every period.
+// getTimerList returns every timer in every period.
 // The order is not guaranteed.
-func (this *CompleteTimer) GetTimerList() []Timer {
+func (this *completeTimer) getTimerList() []Timer {
 	this.mutex.RLock()
 	defer this.mutex.RUnlock()
 	timerList := make([]Timer, 0, 1024)
 	for _, item := range this.periodTimerMap {
-		timerList = append(timerList, item.GetTimerList()...)
+		timerList = append(timerList, item.getTimerList()...)
 	}
 	return timerList
 }
 
-// GetTimerListByType returns every timer whose TimerType equals timerType.
+// getTimerListByType returns every timer whose TimerType equals timerType.
 // The order is not guaranteed.
-func (this *CompleteTimer) GetTimerListByType(timerType string) []Timer {
+func (this *completeTimer) getTimerListByType(timerType string) []Timer {
 	this.mutex.RLock()
 	defer this.mutex.RUnlock()
 	timerList := make([]Timer, 0, 1024)
 	for _, item := range this.periodTimerMap {
-		timerList = append(timerList, item.GetTimerListByType(timerType)...)
+		timerList = append(timerList, item.getTimerListByType(timerType)...)
 	}
 	return timerList
 }
 
-// GetBriefTimerListUntilPeriod returns brief timers from period and every earlier period.
+// getBriefTimerListUntilPeriod returns brief timers from period and every earlier period.
 // The order is not guaranteed.
-func (this *CompleteTimer) GetBriefTimerListUntilPeriod(period Period) []BriefTimer {
+func (this *completeTimer) getBriefTimerListUntilPeriod(period Period) []BriefTimer {
 	this.mutex.RLock()
 	defer this.mutex.RUnlock()
 	list := make([]BriefTimer, 0, 1024)
@@ -105,44 +106,44 @@ func (this *CompleteTimer) GetBriefTimerListUntilPeriod(period Period) []BriefTi
 		if item.IsLaterThan(period) {
 			continue
 		}
-		list = append(list, periodTimerPtr.GetBriefTimerList()...)
+		list = append(list, periodTimerPtr.getBriefTimerList()...)
 	}
 	return list
 }
 
-// GetBriefTimerListOfPeriod returns brief timers from period only.
+// getBriefTimerListOfPeriod returns brief timers from period only.
 // It returns nil when that period is absent.
-func (this *CompleteTimer) GetBriefTimerListOfPeriod(period Period) []BriefTimer {
+func (this *completeTimer) getBriefTimerListOfPeriod(period Period) []BriefTimer {
 	this.mutex.RLock()
 	defer this.mutex.RUnlock()
 	periodTimerPtr, exists := this.periodTimerMap[period]
 	if !exists {
 		return nil
 	}
-	return periodTimerPtr.GetBriefTimerList()
+	return periodTimerPtr.getBriefTimerList()
 }
 
-// GetTimer returns the full timer for briefTimer, or an empty Option when it is absent.
-func (this *CompleteTimer) GetTimer(briefTimer BriefTimer) Option[Timer] {
-	periodTimerOption := this.GetPeriodTimer(briefTimer.getPeriod())
+// getTimer returns the full timer for briefTimer, or an empty Option when it is absent.
+func (this *completeTimer) getTimer(briefTimer BriefTimer) Option[Timer] {
+	periodTimerOption := this.getPeriodTimer(briefTimer.getPeriod())
 	if periodTimerOption.HasNone() {
 		return NewNoneOption[Timer]()
 	}
-	return periodTimerOption.Data().GetTimer(briefTimer.Id)
+	return periodTimerOption.Data().getTimer(briefTimer.Id)
 }
 
 // addTimer stores timer in the period that contains its end time.
 // A missing period is created. An existing id in that period is replaced.
 //
 // It panics when timer.EndMs is negative.
-// The common path uses GetPeriodTimer under a read lock. Only a missing period
+// The common path uses getPeriodTimer under a read lock. Only a missing period
 // takes the write lock, and the map is checked again before creating one.
-func (this *CompleteTimer) addTimer(timer Timer) {
+func (this *completeTimer) addTimer(timer Timer) {
 	if timer.EndMs < 0 {
 		panic(fmt.Sprintf("timer: EndMs %d is negative", timer.EndMs))
 	}
 	period := timer.getPeriod()
-	periodTimerOption := this.GetPeriodTimer(period)
+	periodTimerOption := this.getPeriodTimer(period)
 	if periodTimerOption.HasData() {
 		periodTimerOption.Data().addTimer(timer)
 		return
@@ -159,21 +160,21 @@ func (this *CompleteTimer) addTimer(timer Timer) {
 }
 
 // deleteTimer removes timer from the period that contains its end time.
-// When that period has no timers left, its PeriodTimer is removed from the map.
+// When that period has no timers left, its periodTimer is removed from the map.
 // A missing period or id leaves the collection unchanged.
 //
 // The common path looks up the period under a read lock and deletes there.
 // Only an empty period takes the write lock, and the map is checked again
 // before removing it so a concurrent addTimer is not lost.
-func (this *CompleteTimer) deleteTimer(timer Timer) {
+func (this *completeTimer) deleteTimer(timer Timer) {
 	period := timer.getPeriod()
-	periodTimerOption := this.GetPeriodTimer(period)
+	periodTimerOption := this.getPeriodTimer(period)
 	if periodTimerOption.HasNone() {
 		return
 	}
 	periodTimerPtr := periodTimerOption.Data()
 	periodTimerPtr.deleteTimer(timer.Id)
-	if periodTimerPtr.GetTimerCount() > 0 {
+	if periodTimerPtr.getTimerCount() > 0 {
 		return
 	}
 
@@ -183,7 +184,7 @@ func (this *CompleteTimer) deleteTimer(timer Timer) {
 	if !exists || current != periodTimerPtr {
 		return
 	}
-	if current.GetTimerCount() == 0 {
+	if current.getTimerCount() == 0 {
 		delete(this.periodTimerMap, period)
 	}
 }

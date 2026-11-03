@@ -35,7 +35,7 @@ func (this BriefTimer) IsDue(nowMs int64) bool {
 // getPeriod returns the minute-aligned Period that contains EndMs.
 // EndMs must be non-negative; callers that accept external input validate first.
 func (this BriefTimer) getPeriod() Period {
-	return NewPeriod(uint64(this.EndMs), periodIntervalMs)
+	return newPeriod(uint64(this.EndMs), periodIntervalMs)
 }
 
 // GetDurationMs returns EndMs minus BeginMs.

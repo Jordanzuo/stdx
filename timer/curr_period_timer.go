@@ -47,7 +47,7 @@ func setCurrPeriodTimerListLocked(currPeriod Period, timerList []BriefTimer) {
 func initTimerUntilCurrPeriod(currPeriod Period) {
 	currPeriodTimerMutex.Lock()
 	defer currPeriodTimerMutex.Unlock()
-	setCurrPeriodTimerListLocked(currPeriod, completeTimerPtr.GetBriefTimerListUntilPeriod(currPeriod))
+	setCurrPeriodTimerListLocked(currPeriod, completeTimerPtr.getBriefTimerListUntilPeriod(currPeriod))
 }
 
 // initTimerOfCurrPeriod replaces the current list with the brief timers in currPeriod only,
@@ -55,7 +55,7 @@ func initTimerUntilCurrPeriod(currPeriod Period) {
 func initTimerOfCurrPeriod(currPeriod Period) {
 	currPeriodTimerMutex.Lock()
 	defer currPeriodTimerMutex.Unlock()
-	setCurrPeriodTimerListLocked(currPeriod, completeTimerPtr.GetBriefTimerListOfPeriod(currPeriod))
+	setCurrPeriodTimerListLocked(currPeriod, completeTimerPtr.getBriefTimerListOfPeriod(currPeriod))
 }
 
 // initTimerBetweenPeriod replaces the current list with brief timers in periods
@@ -65,11 +65,11 @@ func initTimerBetweenPeriod(fromPeriod, toPeriod Period) {
 	currPeriodTimerMutex.Lock()
 	defer currPeriodTimerMutex.Unlock()
 	timerList := make([]BriefTimer, 0, 64)
-	for _, item := range completeTimerPtr.GetPeriodTimerList() {
+	for _, item := range completeTimerPtr.getPeriodTimerList() {
 		if !item.Period.IsLaterThan(fromPeriod) || item.Period.IsLaterThan(toPeriod) {
 			continue
 		}
-		timerList = append(timerList, item.GetBriefTimerList()...)
+		timerList = append(timerList, item.getBriefTimerList()...)
 	}
 	setCurrPeriodTimerListLocked(toPeriod, timerList)
 }
@@ -116,7 +116,7 @@ func addTimerToCurrPeriodList(briefTimer BriefTimer) {
 
 // getDueTimerList returns timers whose end time is at or before nowMs, earliest first,
 // and removes those brief timers from currPeriodTimerList.
-// Briefs whose CompleteTimer entry was removed by CancelTimer are peeled without
+// Briefs whose completeTimer entry was removed by CancelTimer are peeled without
 // being sent (lazy cleanup of the due list).
 // It returns nil when the current list is empty.
 // Caller must hold currPeriodTimerMutex.
@@ -133,7 +133,7 @@ func getDueTimerList(nowMs int64) []Timer {
 			break
 		}
 
-		if timerOption := completeTimerPtr.GetTimer(briefTimer); timerOption.HasData() {
+		if timerOption := completeTimerPtr.getTimer(briefTimer); timerOption.HasData() {
 			list = append(list, timerOption.Data())
 		}
 		deleteIndex = index

@@ -9,7 +9,7 @@ import (
 
 func TestInit(t *testing.T) {
 	resetSchedulerForTest()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	timerList := []Timer{
 		newTimer(1, "type1", 1000, 2000, 0, 0, 0, ""),
 		newTimer(2, "type2", 0, 70000, 0, 0, 0, ""),
@@ -19,20 +19,17 @@ func TestInit(t *testing.T) {
 	if got := newGlobalId(); got != 3 {
 		t.Fatalf("next id = %d, want 3", got)
 	}
-	if GetCompleteTimer() != completeTimerPtr {
-		t.Fatal("GetCompleteTimer should return the package collection")
+	if GetTimerCount() != 2 {
+		t.Fatalf("timer count = %d, want 2", GetTimerCount())
 	}
-	if len(completeTimerPtr.GetTimerList()) != 2 {
-		t.Fatalf("timer count = %d, want 2", len(completeTimerPtr.GetTimerList()))
-	}
-	if completeTimerPtr.GetTimer(NewBriefTimer(2, 0, 70000)).HasNone() {
+	if GetTimer(NewBriefTimer(2, 0, 70000)).HasNone() {
 		t.Fatal("timer 2 should be loaded")
 	}
 }
 
 func TestGetTimerList(t *testing.T) {
 	resetSchedulerForTest()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	timerList := []Timer{
 		newTimer(1, "type1", 1000, 2000, 0, 0, 0, "a"),
 		newTimer(2, "type2", 0, 70000, 0, 0, 0, "b"),
@@ -61,7 +58,7 @@ func TestCreateTimer(t *testing.T) {
 	if timer.TimerType != "type1" || timer.IntData1 != 11 || timer.IntData2 != 22 || timer.IntData3 != 33 || timer.StringData != "payload" {
 		t.Fatalf("got %+v", timer)
 	}
-	if completeTimerPtr.GetTimer(timer.BriefTimer).HasNone() {
+	if completeTimerPtr.getTimer(timer.BriefTimer).HasNone() {
 		t.Fatal("created timer should be stored")
 	}
 }
@@ -73,7 +70,7 @@ func TestCreateTimerLaterPeriod(t *testing.T) {
 	defer resetSchedulerForTest()
 
 	timer := CreateTimer("type1", int64(periodIntervalMs), 0, 0, 0, "")
-	if timer.getPeriod() == NewPeriod(uint64(timer.BeginMs), periodIntervalMs) {
+	if timer.getPeriod() == newPeriod(uint64(timer.BeginMs), periodIntervalMs) {
 		t.Fatal("delay of one period should end in a later period")
 	}
 	currPeriodTimerMutex.Lock()
@@ -120,22 +117,22 @@ func TestCancelTimer(t *testing.T) {
 	defer resetSchedulerForTest()
 
 	CancelTimer(newTimer(0, "type1", 1000, 2000, 0, 0, 0, ""))
-	if completeTimerPtr.GetTimer(timer.BriefTimer).HasNone() {
+	if completeTimerPtr.getTimer(timer.BriefTimer).HasNone() {
 		t.Fatal("cancelling an invalid timer should leave the collection unchanged")
 	}
 
 	CancelTimer(timer)
-	if completeTimerPtr.GetTimer(timer.BriefTimer).HasData() {
+	if completeTimerPtr.getTimer(timer.BriefTimer).HasData() {
 		t.Fatal("timer should be cancelled")
 	}
 }
 
 func TestScheduleTickSendsBoundaryTimerOnce(t *testing.T) {
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	currPeriodTimerList = make([]BriefTimer, 0, 64)
 
 	now := time.Now().UnixMilli()
-	curr := NewPeriod(uint64(now), periodIntervalMs)
+	curr := newPeriod(uint64(now), periodIntervalMs)
 	globalCurrPeriod = curr.GetPreviousPeriod()
 
 	// CreateTimer would not stage this on the temporary list while globalCurrPeriod
@@ -165,11 +162,11 @@ func TestScheduleTickSendsBoundaryTimerOnce(t *testing.T) {
 }
 
 func TestScheduleTickSendsTimerLoadedByPeriodJump(t *testing.T) {
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	currPeriodTimerList = make([]BriefTimer, 0, 64)
 
 	now := time.Now().UnixMilli()
-	curr := NewPeriod(uint64(now), periodIntervalMs)
+	curr := newPeriod(uint64(now), periodIntervalMs)
 	globalCurrPeriod = curr.GetPreviousPeriod().GetPreviousPeriod()
 	skipped := getGlobalCurrPeriod().GetNextPeriod()
 
@@ -258,7 +255,7 @@ func stopWithTimeout(t *testing.T) []Timer {
 
 func TestWorkflowInitStartCreateCancelStop(t *testing.T) {
 	resetSchedulerForTest()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	currPeriodTimerList = make([]BriefTimer, 0, 64)
 
 	now := time.Now().UnixMilli()
@@ -267,7 +264,7 @@ func TestWorkflowInitStartCreateCancelStop(t *testing.T) {
 	if got := globalId.Load(); got != 10 {
 		t.Fatalf("global id = %d, want 10", got)
 	}
-	if completeTimerPtr.GetTimer(loaded.BriefTimer).HasNone() {
+	if completeTimerPtr.getTimer(loaded.BriefTimer).HasNone() {
 		t.Fatal("Init should store the loaded timer")
 	}
 	if got := getGlobalCurrPeriod(); !got.Contains(uint64(now)) {
@@ -285,10 +282,10 @@ func TestWorkflowInitStartCreateCancelStop(t *testing.T) {
 	}
 
 	CancelTimer(cancel)
-	if completeTimerPtr.GetTimer(cancel.BriefTimer).HasData() {
+	if completeTimerPtr.getTimer(cancel.BriefTimer).HasData() {
 		t.Fatal("CancelTimer should remove the cancelled timer")
 	}
-	if completeTimerPtr.GetTimer(keep.BriefTimer).HasNone() {
+	if completeTimerPtr.getTimer(keep.BriefTimer).HasNone() {
 		t.Fatal("kept timer should remain after CancelTimer")
 	}
 
@@ -339,11 +336,11 @@ func TestWorkflowInitStartCreateCancelStop(t *testing.T) {
 
 func TestSendDueTimersStopsWhenChannelFull(t *testing.T) {
 	resetSchedulerForTest()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	currPeriodTimerList = make([]BriefTimer, 0, 64)
 
 	now := time.Now().UnixMilli()
-	globalCurrPeriod = NewPeriod(uint64(now), periodIntervalMs)
+	globalCurrPeriod = newPeriod(uint64(now), periodIntervalMs)
 	for i := 0; i < dueTimerChannelCapacity; i++ {
 		DueTimerChannel <- Timer{}
 	}
@@ -374,7 +371,7 @@ func TestSendDueTimersStopsWhenChannelFull(t *testing.T) {
 
 func TestStartStopSchedule(t *testing.T) {
 	resetSchedulerForTest()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	currPeriodTimerList = make([]BriefTimer, 0, 64)
 	Init(nil)
 	Start()
@@ -407,7 +404,7 @@ func TestStartStopSchedule(t *testing.T) {
 
 func TestConcurrentCreateCancelHandleAndSchedule(t *testing.T) {
 	resetSchedulerForTest()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	resetHandlerMap()
 	RegisterHandler("stress", func(Timer) {})
 
@@ -452,7 +449,7 @@ func TestConcurrentCreateCancelHandleAndSchedule(t *testing.T) {
 func TestLifecycleOrder(t *testing.T) {
 	resetSchedulerForTest()
 	defer resetSchedulerForTest()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 
 	assertPanics(t, func() { Start() }, "Start before Init")
 	assertPanics(t, func() { Stop() }, "Stop before Start")

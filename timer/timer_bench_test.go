@@ -9,13 +9,13 @@ import (
 
 func BenchmarkPeriodNew(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_ = NewPeriod(uint64(i)*1000, periodIntervalMs)
+		_ = newPeriod(uint64(i)*1000, periodIntervalMs)
 	}
 }
 
 func BenchmarkPeriodGetPeriodDifference(b *testing.B) {
-	a := NewPeriod(0, periodIntervalMs)
-	c := NewPeriod(10*periodIntervalMs, periodIntervalMs)
+	a := newPeriod(0, periodIntervalMs)
+	c := newPeriod(10*periodIntervalMs, periodIntervalMs)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = c.GetPeriodDifference(a)
@@ -32,7 +32,7 @@ func BenchmarkBriefTimerGetElapsedMs(b *testing.B) {
 }
 
 func BenchmarkCompleteTimerAddTimer(b *testing.B) {
-	complete := NewCompleteTimer()
+	complete := newCompleteTimer()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		complete.addTimer(newTimer(int64(i+1), "bench", 1000, 2000, 0, 0, 0, ""))
@@ -40,7 +40,7 @@ func BenchmarkCompleteTimerAddTimer(b *testing.B) {
 }
 
 func BenchmarkCompleteTimerAddTimerParallel(b *testing.B) {
-	complete := NewCompleteTimer()
+	complete := newCompleteTimer()
 	var id atomic.Int64
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
@@ -51,25 +51,25 @@ func BenchmarkCompleteTimerAddTimerParallel(b *testing.B) {
 }
 
 func BenchmarkCompleteTimerGetTimer(b *testing.B) {
-	complete := NewCompleteTimer()
+	complete := newCompleteTimer()
 	timer := newTimer(1, "bench", 1000, 2000, 0, 0, 0, "")
 	complete.addTimer(timer)
 	brief := timer.BriefTimer
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = complete.GetTimer(brief)
+		_ = complete.getTimer(brief)
 	}
 }
 
 func BenchmarkCompleteTimerGetTimerList(b *testing.B) {
-	complete := NewCompleteTimer()
+	complete := newCompleteTimer()
 	for i := int64(1); i <= 1000; i++ {
 		end := int64((i%10)+1) * periodIntervalMs / 2
 		complete.addTimer(newTimer(i, "bench", 0, end, 0, 0, 0, ""))
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = complete.GetTimerList()
+		_ = complete.getTimerList()
 	}
 }
 
@@ -85,10 +85,10 @@ func BenchmarkAddTimerToCurrPeriodList(b *testing.B) {
 }
 
 func BenchmarkGetDueTimerList(b *testing.B) {
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	resetCurrPeriodTimerList()
 	now := time.Now().UnixMilli()
-	globalCurrPeriod = NewPeriod(uint64(now), periodIntervalMs)
+	globalCurrPeriod = newPeriod(uint64(now), periodIntervalMs)
 	for i := int64(1); i <= 256; i++ {
 		timer := newTimer(i, "bench", now-1000, now-int64(i), 0, 0, 0, "")
 		completeTimerPtr.addTimer(timer)
@@ -105,10 +105,10 @@ func BenchmarkGetDueTimerList(b *testing.B) {
 
 func BenchmarkScheduleTickSteady(b *testing.B) {
 	drainDueTimerChannel()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	resetCurrPeriodTimerList()
 	now := time.Now().UnixMilli()
-	globalCurrPeriod = NewPeriod(uint64(now), periodIntervalMs)
+	globalCurrPeriod = newPeriod(uint64(now), periodIntervalMs)
 	for i := int64(1); i <= 64; i++ {
 		timer := newTimer(i, "bench", now, now+int64(i)*10, 0, 0, 0, "")
 		completeTimerPtr.addTimer(timer)
@@ -119,7 +119,7 @@ func BenchmarkScheduleTickSteady(b *testing.B) {
 		scheduleTick(now)
 		drainDueTimerChannel()
 		currPeriodTimerList = currPeriodTimerList[:0]
-		for _, item := range completeTimerPtr.GetTimerList() {
+		for _, item := range completeTimerPtr.getTimerList() {
 			addTimerToCurrPeriodList(item.BriefTimer)
 		}
 	}
@@ -127,9 +127,9 @@ func BenchmarkScheduleTickSteady(b *testing.B) {
 
 func BenchmarkScheduleTickPeriodAdvance(b *testing.B) {
 	drainDueTimerChannel()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	now := time.Now().UnixMilli()
-	curr := NewPeriod(uint64(now), periodIntervalMs)
+	curr := newPeriod(uint64(now), periodIntervalMs)
 	prev := curr.GetPreviousPeriod()
 	for i := int64(1); i <= 64; i++ {
 		end := int64(curr.Interval.Lower) + i
@@ -147,7 +147,7 @@ func BenchmarkScheduleTickPeriodAdvance(b *testing.B) {
 
 func BenchmarkCreateTimer(b *testing.B) {
 	resetSchedulerForTest()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	Init(nil)
 	Start()
 	defer resetSchedulerForTest()
@@ -163,7 +163,7 @@ func BenchmarkHandleTimer(b *testing.B) {
 	registerBenchHandleOnce.Do(func() {
 		RegisterHandler("bench-handle", func(Timer) {})
 	})
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	lifecycleMutex.SetData(running)
 	defer lifecycleMutex.SetData(idle)
 	b.ResetTimer()

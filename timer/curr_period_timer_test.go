@@ -6,18 +6,18 @@ import (
 )
 
 func resetCurrPeriodTimerList() {
-	globalCurrPeriod = NewPeriod(0, periodIntervalMs)
+	globalCurrPeriod = newPeriod(0, periodIntervalMs)
 	currPeriodTimerList = make([]BriefTimer, 0, 64)
 }
 
 func TestInitTimerUntilCurrPeriod(t *testing.T) {
 	resetCurrPeriodTimerList()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	completeTimerPtr.addTimer(newTimer(1, "type1", 0, 1000, 0, 0, 0, ""))
 	completeTimerPtr.addTimer(newTimer(2, "type2", 0, 70000, 0, 0, 0, ""))
 	completeTimerPtr.addTimer(newTimer(3, "type3", 0, 140000, 0, 0, 0, ""))
 
-	initTimerUntilCurrPeriod(NewPeriod(70000, periodIntervalMs))
+	initTimerUntilCurrPeriod(newPeriod(70000, periodIntervalMs))
 	if len(currPeriodTimerList) != 2 {
 		t.Fatalf("length = %d, want 2", len(currPeriodTimerList))
 	}
@@ -28,14 +28,14 @@ func TestInitTimerUntilCurrPeriod(t *testing.T) {
 
 func TestInitTimerBetweenPeriod(t *testing.T) {
 	resetCurrPeriodTimerList()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	completeTimerPtr.addTimer(newTimer(1, "type1", 0, 1000, 0, 0, 0, ""))
 	completeTimerPtr.addTimer(newTimer(2, "type2", 0, 70000, 0, 0, 0, ""))
 	completeTimerPtr.addTimer(newTimer(3, "type3", 0, 140000, 0, 0, 0, ""))
 	completeTimerPtr.addTimer(newTimer(4, "type4", 0, 200000, 0, 0, 0, ""))
 
-	from := NewPeriod(1000, periodIntervalMs)
-	to := NewPeriod(140000, periodIntervalMs)
+	from := newPeriod(1000, periodIntervalMs)
+	to := newPeriod(140000, periodIntervalMs)
 	initTimerBetweenPeriod(from, to)
 
 	if got := getGlobalCurrPeriod(); got != to {
@@ -51,12 +51,12 @@ func TestInitTimerBetweenPeriod(t *testing.T) {
 
 func TestInitTimerOfCurrPeriod(t *testing.T) {
 	resetCurrPeriodTimerList()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	completeTimerPtr.addTimer(newTimer(1, "type1", 0, 1000, 0, 0, 0, ""))
 	completeTimerPtr.addTimer(newTimer(2, "type2", 0, 70000, 0, 0, 0, ""))
 	completeTimerPtr.addTimer(newTimer(3, "type3", 0, 140000, 0, 0, 0, ""))
 
-	initTimerOfCurrPeriod(NewPeriod(70000, periodIntervalMs))
+	initTimerOfCurrPeriod(newPeriod(70000, periodIntervalMs))
 	if len(currPeriodTimerList) != 1 {
 		t.Fatalf("length = %d, want 1", len(currPeriodTimerList))
 	}
@@ -97,11 +97,11 @@ func TestAddTimerToCurrPeriodListSingleItem(t *testing.T) {
 
 func TestGetDueTimerList(t *testing.T) {
 	resetCurrPeriodTimerList()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	completeTimerPtr.addTimer(newTimer(1, "type1", 1000, 2000, 0, 0, 0, ""))
 	completeTimerPtr.addTimer(newTimer(2, "type2", 1000, 3000, 0, 0, 0, ""))
 	completeTimerPtr.addTimer(newTimer(3, "type3", 1000, 5000, 0, 0, 0, ""))
-	initTimerUntilCurrPeriod(NewPeriod(1000, periodIntervalMs))
+	initTimerUntilCurrPeriod(newPeriod(1000, periodIntervalMs))
 
 	dueList := getDueTimerList(3500)
 	if len(dueList) != 2 {
@@ -121,9 +121,9 @@ func TestGetDueTimerListEmpty(t *testing.T) {
 
 func TestGetDueTimerListNoDueTimers(t *testing.T) {
 	resetCurrPeriodTimerList()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	completeTimerPtr.addTimer(newTimer(1, "type1", 1000, 5000, 0, 0, 0, ""))
-	initTimerUntilCurrPeriod(NewPeriod(1000, periodIntervalMs))
+	initTimerUntilCurrPeriod(newPeriod(1000, periodIntervalMs))
 
 	if dueList := getDueTimerList(2000); len(dueList) != 0 {
 		t.Fatalf("due length = %d, want 0", len(dueList))
@@ -135,10 +135,10 @@ func TestGetDueTimerListNoDueTimers(t *testing.T) {
 
 func TestGetDueTimerListAllDue(t *testing.T) {
 	resetCurrPeriodTimerList()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	completeTimerPtr.addTimer(newTimer(1, "type1", 1000, 2000, 0, 0, 0, ""))
 	completeTimerPtr.addTimer(newTimer(2, "type2", 1000, 3000, 0, 0, 0, ""))
-	initTimerUntilCurrPeriod(NewPeriod(1000, periodIntervalMs))
+	initTimerUntilCurrPeriod(newPeriod(1000, periodIntervalMs))
 
 	if dueList := getDueTimerList(5000); len(dueList) != 2 {
 		t.Fatalf("due length = %d, want 2", len(dueList))
@@ -150,11 +150,11 @@ func TestGetDueTimerListAllDue(t *testing.T) {
 
 func TestGetDueTimerListOrdered(t *testing.T) {
 	resetCurrPeriodTimerList()
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	completeTimerPtr.addTimer(newTimer(1, "type1", 1000, 1000, 0, 0, 0, ""))
 	completeTimerPtr.addTimer(newTimer(2, "type2", 1000, 2000, 0, 0, 0, ""))
 	completeTimerPtr.addTimer(newTimer(3, "type3", 1000, 3000, 0, 0, 0, ""))
-	initTimerUntilCurrPeriod(NewPeriod(1000, periodIntervalMs))
+	initTimerUntilCurrPeriod(newPeriod(1000, periodIntervalMs))
 
 	if len(currPeriodTimerList) != 3 {
 		t.Fatalf("length = %d, want 3", len(currPeriodTimerList))

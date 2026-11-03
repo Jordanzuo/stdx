@@ -77,7 +77,7 @@ func TestHandleTimer(t *testing.T) {
 		receivedTimer = timer
 	})
 
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	timer := newTimer(1, "testType", 1000, 2000, 0, 0, 0, "")
 	completeTimerPtr.addTimer(timer)
 
@@ -90,7 +90,7 @@ func TestHandleTimer(t *testing.T) {
 	if receivedTimer.Id != 1 {
 		t.Fatalf("received timer id = %d, want 1", receivedTimer.Id)
 	}
-	if completeTimerPtr.GetTimer(NewBriefTimer(1, 1000, 2000)).HasData() {
+	if completeTimerPtr.getTimer(NewBriefTimer(1, 1000, 2000)).HasData() {
 		t.Fatal("timer should be deleted after HandleTimer")
 	}
 }
@@ -98,14 +98,14 @@ func TestHandleTimer(t *testing.T) {
 func TestHandleTimerNoHandler(t *testing.T) {
 	resetHandlerMap()
 	withRunningLifecycle(t)
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	timer := newTimer(1, "nonexistentType", 1000, 2000, 0, 0, 0, "")
 	completeTimerPtr.addTimer(timer)
 
 	if err := HandleTimer(timer); err == nil {
 		t.Fatal("HandleTimer() should return an error for an unregistered type")
 	}
-	if completeTimerPtr.GetTimer(NewBriefTimer(1, 1000, 2000)).HasData() {
+	if completeTimerPtr.getTimer(NewBriefTimer(1, 1000, 2000)).HasData() {
 		t.Fatal("timer should be deleted when no handler exists")
 	}
 }
@@ -116,7 +116,7 @@ func TestHandleTimerMissingTimer(t *testing.T) {
 	handlerCalled := false
 	RegisterHandler("testType", func(Timer) { handlerCalled = true })
 
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	timer := newTimer(1, "testType", 1000, 2000, 0, 0, 0, "")
 
 	if err := HandleTimer(timer); err != nil {
@@ -134,7 +134,7 @@ func TestHandleTimerNotRunning(t *testing.T) {
 	lifecycleMutex.SetData(idle)
 	defer lifecycleMutex.SetData(idle)
 
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	timer := newTimer(1, "testType", 1000, 2000, 0, 0, 0, "")
 	completeTimerPtr.addTimer(timer)
 
@@ -144,7 +144,7 @@ func TestHandleTimerNotRunning(t *testing.T) {
 	if handlerCalled {
 		t.Fatal("handler should not run when lifecycle is not running")
 	}
-	if completeTimerPtr.GetTimer(timer.BriefTimer).HasNone() {
+	if completeTimerPtr.getTimer(timer.BriefTimer).HasNone() {
 		t.Fatal("timer should remain when HandleTimer is a no-op")
 	}
 }
@@ -158,7 +158,7 @@ func TestHandleTimerMultipleTypes(t *testing.T) {
 	RegisterHandler("type1", func(Timer) { handler1Called = true })
 	RegisterHandler("type2", func(Timer) { handler2Called = true })
 
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	timer1 := newTimer(1, "type1", 1000, 2000, 0, 0, 0, "")
 	timer2 := newTimer(2, "type2", 1000, 3000, 0, 0, 0, "")
 	completeTimerPtr.addTimer(timer1)
@@ -188,7 +188,7 @@ func TestHandleTimerWithData(t *testing.T) {
 		receivedString = timer.StringData
 	})
 
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	timer := newTimer(1, "testType", 1000, 2000, 123, 456, 789, "testData")
 	completeTimerPtr.addTimer(timer)
 	if err := HandleTimer(timer); err != nil {

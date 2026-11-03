@@ -6,11 +6,12 @@ import (
 	"time"
 
 	. "github.com/Jordanzuo/stdx/mutex"
+	. "github.com/Jordanzuo/stdx/option"
 )
 
 var (
 	// completeTimerPtr is the package collection of timers grouped by period.
-	completeTimerPtr = NewCompleteTimer()
+	completeTimerPtr = newCompleteTimer()
 	// DueTimerChannel receives timers that schedule finds due.
 	DueTimerChannel = make(chan Timer, dueTimerChannelCapacity)
 
@@ -45,7 +46,7 @@ func Init(timerList []Timer) {
 		completeTimerPtr.addTimer(item)
 	}
 	setGlobalId(maxId)
-	currPeriod := NewPeriod(uint64(time.Now().UnixMilli()), periodIntervalMs)
+	currPeriod := newPeriod(uint64(time.Now().UnixMilli()), periodIntervalMs)
 	initTimerUntilCurrPeriod(currPeriod)
 	lifecycleMutex.SetDataAfterLock(inited)
 }
@@ -83,7 +84,7 @@ func Stop() []Timer {
 	clearCurrPeriodTimerList()
 	close(DueTimerChannel)
 	lifecycleMutex.SetDataAfterLock(stopped)
-	return completeTimerPtr.GetTimerList()
+	return completeTimerPtr.getTimerList()
 }
 
 // schedule sends due timers to DueTimerChannel and advances the current period.
@@ -114,7 +115,7 @@ func schedule() {
 // new minute before the advance is loaded by the rebuild and sent on the next tick.
 // It returns false when Stop interrupts a send; the caller signals closedChannel.
 func scheduleTick(nowMs int64) bool {
-	currPeriod := NewPeriod(uint64(nowMs), periodIntervalMs)
+	currPeriod := newPeriod(uint64(nowMs), periodIntervalMs)
 	prevPeriod := getGlobalCurrPeriod()
 	diffPeriod := currPeriod.GetPeriodDifference(prevPeriod)
 
@@ -155,17 +156,26 @@ func sendDueTimers(dueList []Timer) bool {
 	return true
 }
 
-// GetCompleteTimer returns the package collection of timers for inspection.
-// Mutation is package-private; use CreateTimer and CancelTimer while running.
-func GetCompleteTimer() *CompleteTimer {
-	return completeTimerPtr
+// GetTimer returns the timer matching briefTimer, or none when it is absent.
+func GetTimer(briefTimer BriefTimer) Option[Timer] {
+	return completeTimerPtr.getTimer(briefTimer)
 }
 
-// GetTimerList returns every timer still stored in completeTimerPtr.
+// GetTimerCount returns how many timers are still stored in the package collection.
+func GetTimerCount() int {
+	return completeTimerPtr.getTimerCount()
+}
+
+// GetTimerList returns every timer still stored in the package collection.
 // External systems can persist the list and pass it to Init; the id is derived
 // as the maximum Id in that list.
 func GetTimerList() []Timer {
-	return completeTimerPtr.GetTimerList()
+	return completeTimerPtr.getTimerList()
+}
+
+// GetTimerListByType returns every stored timer whose TimerType equals timerType.
+func GetTimerListByType(timerType string) []Timer {
+	return completeTimerPtr.getTimerListByType(timerType)
 }
 
 // CreateTimer builds a timer that ends delayMs after now, stores it, and returns it.
@@ -229,7 +239,7 @@ func HandleTimer(timer Timer) error {
 }
 
 func handleTimer(timer Timer) error {
-	if completeTimerPtr.GetTimer(timer.BriefTimer).HasNone() {
+	if completeTimerPtr.getTimer(timer.BriefTimer).HasNone() {
 		return nil
 	}
 
