@@ -1,6 +1,6 @@
 # stdx
 
-Generic building blocks that Go's standard library does not provide yet: optional values, result types, tuples, typed mutexes, custom base conversion, and unsigned integer intervals.
+Generic building blocks that Go's standard library does not provide yet: optional values, result types, tuples, typed mutexes, custom base conversion, unsigned integer intervals, log file rotation, and a period-bucketed timer scheduler.
 
 Licensed under Apache-2.0. You may use this in proprietary projects without open-sourcing your code.
 
@@ -24,6 +24,8 @@ go get github.com/Jordanzuo/stdx
 | `mutex` | `github.com/Jordanzuo/stdx/mutex` | Typed mutex wrappers (`Mutex[T]`, `RWMutex[T]`) |
 | `base` | `github.com/Jordanzuo/stdx/base` | Convert `uint64` values to and from custom base strings |
 | `math` | `github.com/Jordanzuo/stdx/math` | Discrete intervals over unsigned integers with inclusive/exclusive bounds |
+| `file` | `github.com/Jordanzuo/stdx/file` | Thread-safe log rotation by size, calendar day, or elapsed interval |
+| `timer` | `github.com/Jordanzuo/stdx/timer` | Minute-bucketed timers with Init/Start/Stop, due channel, and typed handlers |
 
 ## Examples
 
@@ -178,6 +180,51 @@ Intervals support four endpoint combinations: `[a,b]`, `[a,b)`, `(a,b]`, and `(a
 `BuildInterval` rejects intervals when the lower bound exceeds the upper bound, when equal bounds would form an empty interval with any exclusive endpoint, when `[0,max]` inclusive would overflow `Length`, or when the interval type is undefined. `BuildIntervalFromString` validates bracket syntax, converts each bound with `convertFunc`, and delegates the rest to `BuildInterval`.
 
 `DistanceFromBeginning` returns `value - lower` when the value is in the interval, or `0` otherwise. Create intervals with `BuildInterval` or `BuildIntervalFromString` rather than constructing `Interval` values directly.
+
+### File
+
+```go
+import "github.com/Jordanzuo/stdx/file"
+
+opened := file.NewRotateFile("logs", "app", ".log", file.RotateByDateOrSize(10<<20))
+if opened.HasError() {
+    // handle error
+}
+rf := opened.Data()
+defer rf.Close()
+
+_, _ = rf.Write([]byte("hello\n"))
+```
+
+`RotateFile` rotates when the file exceeds max size and either the calendar day changes (`RotateByDateOrSize`) or a time interval elapses (`RotateByTimeOrSize`). Writes are safe for concurrent use.
+
+### Timer
+
+```go
+import "github.com/Jordanzuo/stdx/timer"
+
+timer.RegisterHandler("reminder", func(t timer.Timer) {
+    // handle due timer
+})
+
+timer.Init(nil) // or a list persisted from a previous Stop
+timer.Start()
+
+_ = timer.CreateTimer("reminder", 5_000, 0, 0, 0, "payload")
+
+// In a consumer goroutine:
+go func() {
+    for t := range timer.DueTimerChannel {
+        _ = timer.HandleTimer(t)
+    }
+}()
+
+// On shutdown:
+remaining := timer.Stop() // persist remaining; reload with Init next process
+_ = remaining
+```
+
+Call `Init`, `Start`, and `Stop` once in that order. `CreateTimer`, `CancelTimer`, and `HandleTimer` only take effect while the lifecycle is running. Due timers are delivered on `DueTimerChannel`; `HandleTimer` runs the registered callback when the timer is still present, then removes it. Persist `Stop()`'s list (or `GetTimerList`) and pass it to `Init` on the next process.
 
 ## Development
 
